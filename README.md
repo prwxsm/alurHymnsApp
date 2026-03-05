@@ -1,4 +1,4 @@
-# alur_hymn_app
+# alurHymns
 
 A new Flutter project.
 
