@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme.dart';
 import 'screens/home_screen.dart';
 import 'services/local_db_service.dart';
@@ -10,16 +9,7 @@ import 'providers/hymn_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase
-  await Supabase.initialize(
-    url: 'https://jnshortxtmxlfzoeqcqo.supabase.co',
-    anonKey: const String.fromEnvironment(
-      'SUPABASE_ANON_KEY',
-      defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...', // User provided prefix, truncated in prompt
-    ),
-  );
-
-  // Initialize Hive
+  // Initialize local Hive storage and load/upgrade bundled hymns offline
   final localDb = LocalDbService();
   await localDb.init();
 

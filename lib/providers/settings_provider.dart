@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../services/local_db_service.dart';
 import 'hymn_provider.dart';
 
 class SettingsNotifier extends StateNotifier<SettingsState> {

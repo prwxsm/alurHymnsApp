@@ -83,7 +83,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 24.0),
         side: BorderSide(
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), 
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), 
           width: 1.5
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
