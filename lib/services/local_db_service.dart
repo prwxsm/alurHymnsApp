@@ -160,7 +160,7 @@ class LocalDbService {
         }
 
         // Reconcile service plans with fresh hymn data
-        await _reconcileServicePlans(stagedHymns);
+        await reconcileServicePlans(stagedHymns);
 
         // Commit version
         await settingsBox.put(installedHymnsVersionKey, targetVersion);
@@ -170,14 +170,16 @@ class LocalDbService {
         debugPrint('LocalDbService: Staging was incomplete when terminated. Discarded partial staging.');
       }
 
-      // Clean up staging, backup box, and journal
+      // Clean up staging, backup box, and journal ONLY after successful completion
       await serviceBackupBox.clear();
       await stagingBox.clear();
       await settingsBox.delete(migrationJournalKey);
     } catch (e, st) {
       debugPrint('LocalDbService: Error during interrupted migration recovery: $e\n$st');
-      // Ensure journal is cleared to avoid infinite recovery loops
-      await settingsBox.delete(migrationJournalKey);
+      // DO NOT delete migration_journal, stagingBox, or serviceBackupBox!
+      // Preserve persistent state so the app can retry recovery or present a recoverable error.
+      initializationError = 'Failed to recover previous database migration: $e';
+      throw HymnDatabaseException(initializationError!, e);
     }
   }
 
@@ -188,7 +190,7 @@ class LocalDbService {
   /// - Updated lyrics and titles are propagated to service plans.
   /// - Hymns removed from future collections are preserved in service plans
   ///   so existing church services do not lose references or crash.
-  Future<void> _reconcileServicePlans(Map<int, Hymn> hymnsMap) async {
+  Future<void> reconcileServicePlans(Map<int, Hymn> hymnsMap) async {
     if (!serviceBox.isOpen) return;
 
     final List<dynamic> serviceKeys = serviceBox.keys.toList();
@@ -356,7 +358,7 @@ class LocalDbService {
 
       // Step 7: Reconcile serviceBox references safely
       if (serviceBox.isOpen) {
-        await _reconcileServicePlans(liveMap);
+        await reconcileServicePlans(liveMap);
       }
 
       // Step 8: Commit version and offline status ONLY after all writes succeed
@@ -372,6 +374,7 @@ class LocalDbService {
       return true;
     } catch (e, st) {
       debugPrint('Error during bundled hymn import: $e\n$st');
+      bool rollbackSucceeded = true;
 
       // Runtime rollback: restore live hymnsBox if modified
       if (inMemoryHymnsBackup != null && inMemoryHymnsBackup.isNotEmpty && hymnsBox.isOpen) {
@@ -382,6 +385,7 @@ class LocalDbService {
           });
           debugPrint('LocalDbService: successfully rolled back hymnsBox to previous snapshot');
         } catch (rollbackError) {
+          rollbackSucceeded = false;
           debugPrint('LocalDbService: hymnsBox rollback error: $rollbackError');
         }
       }
@@ -398,22 +402,31 @@ class LocalDbService {
           }
           debugPrint('LocalDbService: successfully rolled back serviceBox to previous snapshot');
         } catch (rollbackError) {
+          rollbackSucceeded = false;
           debugPrint('LocalDbService: serviceBox rollback error: $rollbackError');
         }
       }
 
-      // Clean up journal & staging if they were opened
-      try {
-        if (settingsBox.isOpen) {
-          await settingsBox.delete(migrationJournalKey);
-        }
-        if (stagingBox != null && stagingBox.isOpen) {
-          await stagingBox.clear();
-        }
-        if (serviceBackupBox != null && serviceBackupBox.isOpen) {
-          await serviceBackupBox.clear();
-        }
-      } catch (_) {}
+      // Clean up journal & staging ONLY if in-memory rollback completely succeeded!
+      // If rollback failed, preserve persistent staging, service backups, and journal
+      // so restart recovery can safely restore them.
+      if (rollbackSucceeded) {
+        try {
+          if (settingsBox.isOpen) {
+            await settingsBox.delete(migrationJournalKey);
+          }
+          if (stagingBox != null && stagingBox.isOpen) {
+            await stagingBox.clear();
+          }
+          if (serviceBackupBox != null && serviceBackupBox.isOpen) {
+            await serviceBackupBox.clear();
+          }
+        } catch (_) {}
+      } else {
+        debugPrint(
+          'LocalDbService: Rollback was incomplete. Preserving persistent staging and backups for restart recovery.',
+        );
+      }
 
       return false;
     }
