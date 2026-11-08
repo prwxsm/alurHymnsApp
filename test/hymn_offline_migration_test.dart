@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:alur_hymn_app/models/hymn.dart';
 import 'package:alur_hymn_app/models/service_hymn.dart';
 import 'package:alur_hymn_app/services/local_db_service.dart';
 
@@ -420,6 +421,92 @@ void main() {
       expect(serviceEntry!.category, equals('Communion'));
       expect(serviceEntry.hymn.id, equals(77));
       expect(serviceEntry.hymn.title, equals('Old Hymn 77'));
+    });
+
+    test('Failed initial hymn import is detected by init() and throws HymnDatabaseException', () async {
+      final badLocalDb = LocalDbService();
+      // Initialize with non-existent asset path on fresh installation
+      expect(
+        () async => await badLocalDb.init(
+          assetPath: 'assets/non_existent_file.json',
+          storagePath: tempDir.path,
+        ),
+        throwsA(isA<HymnDatabaseException>()),
+      );
+    });
+
+    test('Persistent recovery restores serviceBox and completes migration after unexpected process termination', () async {
+      await localDb.init(storagePath: tempDir.path);
+
+      // Seed v1 data
+      final v1Data = [
+        {'id': 1, 'hymn_number': 1, 'title': 'Hymn 1 v1', 'content': 'Content 1', 'section_number': 1},
+        {'id': 2, 'hymn_number': 2, 'title': 'Hymn 2 v1', 'content': 'Content 2', 'section_number': 1},
+      ];
+      await localDb.importBundledHymns(
+        rawJsonString: jsonEncode(v1Data),
+        targetVersion: 1,
+      );
+
+      // Create a service plan
+      final hymn1 = localDb.getHymnById(1)!;
+      final serviceEntry = ServiceHymn(
+        category: 'Introit',
+        hymn: hymn1,
+        order: 1,
+      );
+      await localDb.serviceBox.add(serviceEntry);
+      expect(localDb.serviceBox.length, equals(1));
+
+      // Simulate an uncompleted staged migration where the process was abruptly killed:
+      // 1. Stage box contains updated v2 hymns
+      final stagingBox = await Hive.openBox<Hymn>(LocalDbService.stagingHymnsBoxName);
+      await stagingBox.put(
+        1,
+        Hymn(
+          id: 1,
+          hymnNumber: 1,
+          title: 'Hymn 1 v2 Updated',
+          content: 'Content 1 Updated',
+          sectionNumber: 1,
+        ),
+      );
+
+      // 2. Persistent service backup box contains the original service plan
+      final serviceBackupBox = await Hive.openBox<ServiceHymn>(LocalDbService.serviceBackupBoxName);
+      await serviceBackupBox.put(0, serviceEntry.copyWith(hymn: serviceEntry.hymn.copyWith()));
+
+      // 3. Write migration journal to disk
+      await localDb.settingsBox.put(LocalDbService.migrationJournalKey, {
+        'stage': 'staged',
+        'targetVersion': 2,
+      });
+
+      // 4. Simulate corruption / partial wipe of live serviceBox and hymnsBox before termination
+      await localDb.serviceBox.clear();
+      expect(localDb.serviceBox.isEmpty, isTrue);
+
+      // Close boxes to simulate full app restart
+      await Hive.close();
+
+      // Launch app afresh - init() must run persistent recovery
+      final recoveredDb = LocalDbService();
+      await recoveredDb.init(
+        storagePath: tempDir.path,
+        assetPath: 'assets/hymns.json',
+      );
+
+      // Verify persistent recovery succeeded:
+      // 1. Version bumped to targetVersion 2
+      expect(recoveredDb.getInstalledHymnsVersion(), equals(2));
+      // 2. Service plan restored and reconciled with updated hymn title
+      expect(recoveredDb.serviceBox.length, equals(1));
+      final recoveredPlan = recoveredDb.serviceBox.getAt(0);
+      expect(recoveredPlan, isNotNull);
+      expect(recoveredPlan!.category, equals('Introit'));
+      expect(recoveredPlan.hymn.title, equals('Hymn 1 v2 Updated'));
+      // 3. Journal cleaned up
+      expect(recoveredDb.settingsBox.get(LocalDbService.migrationJournalKey), isNull);
     });
   });
 }

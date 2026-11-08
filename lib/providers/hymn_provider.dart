@@ -20,7 +20,10 @@ class HymnNotifier extends StateNotifier<AsyncValue<List<Hymn>>> {
       var localHymns = localDb.getAllHymns();
       // Ensure seeded if empty
       if (localHymns.isEmpty) {
-        await localDb.importBundledHymns();
+        final success = await localDb.importBundledHymns();
+        if (!success) {
+          throw const HymnDatabaseException('Failed to initialize hymn collection.');
+        }
         localHymns = localDb.getAllHymns();
       }
 

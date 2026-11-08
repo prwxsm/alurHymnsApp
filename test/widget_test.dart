@@ -82,4 +82,23 @@ void main() {
     expect(find.text('Search Results'), findsOneWidget);
     expect(find.text('Yellow Book Hymn 1'), findsOneWidget);
   });
+
+  testWidgets('App displays InitializationErrorScreen on failed startup', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          localDbProvider.overrideWithValue(localDb),
+        ],
+        child: const AlurHymnApp(
+          initializationError: 'Failed to load hymn assets.',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unable to Initialize Hymn Library'), findsOneWidget);
+    expect(find.text('Failed to load hymn assets.'), findsOneWidget);
+    expect(find.text('Retry Initialization'), findsOneWidget);
+  });
 }
