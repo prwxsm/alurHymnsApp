@@ -1,14 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/hymn.dart';
 import '../services/local_db_service.dart';
-import '../services/supabase_service.dart';
 
 final localDbProvider = Provider<LocalDbService>((ref) {
   return LocalDbService();
-});
-
-final supabaseServiceProvider = Provider<SupabaseService>((ref) {
-  return SupabaseService();
 });
 
 class HymnNotifier extends StateNotifier<AsyncValue<List<Hymn>>> {
@@ -21,39 +16,32 @@ class HymnNotifier extends StateNotifier<AsyncValue<List<Hymn>>> {
   Future<void> _loadHymns() async {
     try {
       final localDb = ref.read(localDbProvider);
-      
-      if (localDb.isOfflineReady()) {
-        final localHymns = localDb.getAllHymns();
-        state = AsyncValue.data(localHymns);
-      } else {
-        // Fetch from remote
-        await fetchAndSaveHymns();
+
+      var localHymns = localDb.getAllHymns();
+      // Ensure seeded if empty
+      if (localHymns.isEmpty) {
+        await localDb.importBundledHymns();
+        localHymns = localDb.getAllHymns();
       }
+
+      state = AsyncValue.data(localHymns);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
 
-  Future<void> fetchAndSaveHymns() async {
-    state = const AsyncValue.loading();
-    try {
-      final supabaseService = ref.read(supabaseServiceProvider);
-      final localDb = ref.read(localDbProvider);
-
-      final hymns = await supabaseService.fetchAllHymns();
-      await localDb.saveHymns(hymns);
-      
-      state = AsyncValue.data(localDb.getAllHymns());
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
-    }
+  /// Reloads hymns from local storage.
+  Future<void> reloadHymns() async {
+    final localDb = ref.read(localDbProvider);
+    state = AsyncValue.data(localDb.getAllHymns());
   }
 
+  /// Toggles favorite status for a hymn by its ID.
   Future<void> toggleFavorite(int hymnId) async {
     final localDb = ref.read(localDbProvider);
     await localDb.toggleFavorite(hymnId);
-    
-    // Refresh state
+
+    // Refresh state with updated favorites
     if (state.hasValue) {
       state = AsyncValue.data(localDb.getAllHymns());
     }
@@ -83,7 +71,7 @@ final searchQueryProvider = StateProvider<String>((ref) => '');
 final filteredHymnsProvider = Provider<List<Hymn>>((ref) {
   final hymnsState = ref.watch(hymnProvider);
   final section = ref.watch(selectedSectionProvider);
-  final query = ref.watch(searchQueryProvider).toLowerCase();
+  final query = ref.watch(searchQueryProvider).trim().toLowerCase();
 
   return hymnsState.maybeWhen(
     data: (hymns) {
@@ -92,6 +80,7 @@ final filteredHymnsProvider = Provider<List<Hymn>>((ref) {
         final matchesQuery = query.isEmpty ||
             h.title.toLowerCase().contains(query) ||
             h.hymnNumber.toString() == query ||
+            (h.englishName != null && h.englishName!.toLowerCase().contains(query)) ||
             h.content.toLowerCase().contains(query);
         return matchesSection && matchesQuery;
       }).toList();

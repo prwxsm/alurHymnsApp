@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/service_hymn.dart';
-import '../services/local_db_service.dart';
 import 'hymn_provider.dart';
 
 class ServiceModeNotifier extends StateNotifier<List<ServiceHymn>> {

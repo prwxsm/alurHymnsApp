@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/service_mode_provider.dart';
-import '../providers/hymn_provider.dart';
-import '../models/service_hymn.dart';
 import 'hymn_reader_screen.dart';
 
 class ServiceModeScreen extends ConsumerStatefulWidget {
@@ -13,47 +11,6 @@ class ServiceModeScreen extends ConsumerStatefulWidget {
 }
 
 class _ServiceModeScreenState extends ConsumerState<ServiceModeScreen> {
-  final TextEditingController _categoryController = TextEditingController();
-
-  void _showAddDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Hymn to Service'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _categoryController,
-                decoration: const InputDecoration(
-                  labelText: 'Category (e.g., Opening)',
-                  hintText: 'Opening',
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text('To select a hymn, browse the app and press "Add to Service", or we can build a picker here.'),
-              // For simplicity in MVP, we might implement a minimal picker or instruct user.
-              // A full implementation would have an autocomplete text field picking a hymn.
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                // Not fully implemented in MVP without complex picker. Let's provide an MVP: Search specific number
-                Navigator.pop(context);
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
